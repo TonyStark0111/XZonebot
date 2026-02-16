@@ -2,12 +2,15 @@ from os import environ
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message
 from database.users_db import db
-from info import PROTECT_CONTENT, DAILY_LIMIT, PREMIUM_DAILY_LIMIT, VERIFICATION_DAILY_LIMIT, FSUB, IS_VERIFY
+from info import PROTECT_CONTENT, DAILY_LIMIT, PREMIUM_DAILY_LIMIT, VERIFICATION_DAILY_LIMIT, FSUB, IS_VERIFY, TEMP_PREMIUM_DURATION
 import asyncio
+from datetime import datetime, timedelta, timezone
 from plugins.verification import av_x_verification
 from plugins.ban_manager import ban_manager
 from utils import temp, auto_delete_message, is_user_joined
 
+# Import login_start for callback
+from plugins.session_login import login_start
 
 @Client.on_message(filters.command("getvideo") | filters.regex(r"(?i)get video"))
 async def handle_video_request(client, m: Message):
@@ -29,15 +32,20 @@ async def handle_video_request(client, m: Message):
 
     # Premium + limit info
     is_premium = await db.has_premium_access(user_id)
+    has_session = await db.get_session(user_id) is not None
+
     # Define limits based on status
-    current_limit = PREMIUM_DAILY_LIMIT if is_premium else DAILY_LIMIT
-    
+    if is_premium:
+        limit = PREMIUM_DAILY_LIMIT
+    else:
+        limit = DAILY_LIMIT
+
     used = await db.get_video_count(user_id) or 0
 
     # ------------------------------------------------
-    # LIMIT & VERIFICATION & PREMIUM SYSTEM
+    # LIMIT & VERIFICATION & TEMP PREMIUM SYSTEM
     # ------------------------------------------------
-    
+
     # Message for when any absolute max limit is reached
     limit_reached_msg = (
         f"𝖸𝗈𝗎'𝗏𝖾 𝖱𝖾𝖺𝖼𝗁𝖾𝖽 𝖸𝗈𝗎𝗋 𝖣𝖺𝗂𝗅𝗒 𝖫𝗂𝗆𝗂𝗍 𝖮𝖿 {used} 𝖥𝗂𝗅𝖾𝗌.\n\n"
@@ -48,23 +56,48 @@ async def handle_video_request(client, m: Message):
         [InlineKeyboardButton("• 𝖯𝗎𝗋𝖼𝗁𝖺𝗌𝖾 𝖲𝗎𝖻𝗌𝖼𝗋𝗂𝗉𝗍𝗂𝗈𝗇 •", callback_data="get")]
     ])
 
-    if is_premium:
-        # Premium User Logic
-        if used >= PREMIUM_DAILY_LIMIT:
+    if used >= limit:
+        # Already premium? Just inform
+        if is_premium:
             return await m.reply(
                 f"𝖸𝗈𝗎'𝗏𝖾 𝖱𝖾𝖺𝖼𝗁𝖾𝖽 𝖸𝗈𝗎𝗋 𝖯𝗋𝖾𝗆𝗂𝗎𝗆 𝖫𝗂𝗆𝗂𝗍 𝖮𝖿 {PREMIUM_DAILY_LIMIT} 𝖥𝗂𝗅𝖾𝗌.\n"
                 f"𝖳𝗋𝗒 𝖠𝗀𝖺𝗂𝗇 𝖳𝗈𝗆𝗈𝗋𝗋𝗈𝗐!"
             )
-    else:
-        if used >= VERIFICATION_DAILY_LIMIT:
-            return await m.reply(limit_reached_msg, reply_markup=buy_button)
-        if used >= DAILY_LIMIT:
-            if IS_VERIFY:
-                verified = await av_x_verification(client, m)
-                if not verified:
-                    return 
+
+        # Not premium, check if they have a session
+        if has_session:
+            # They have a session but no premium: maybe they haven't used temporary bonus yet
+            if not await db.has_temp_premium_granted(user_id):
+                # Grant temporary premium now
+                now = datetime.now(timezone.utc)
+                expiry = now + timedelta(seconds=TEMP_PREMIUM_DURATION)
+                await db.users.update_one(
+                    {"id": user_id},
+                    {"$set": {
+                        "expiry_time": expiry,
+                        "temp_premium_granted": True
+                    }}
+                )
+                # Proceed to send video (they now have premium)
+                # No return, continue with video sending
             else:
-                return await m.reply(limit_reached_msg, reply_markup=buy_button)
+                # Already used temporary bonus, need to purchase
+                return await m.reply(
+                    "𝖸𝗈𝗎'𝗏𝖾 𝖠𝗅𝗋𝖾𝖺𝖽𝗒 𝖴𝗌𝖾𝖽 𝖸𝗈𝗎𝗋 𝖳𝖾𝗆𝗉𝗈𝗋𝖺𝗋𝗒 𝖯𝗋𝖾𝗆𝗂𝗎𝗆 𝖡𝗈𝗇𝗎𝗌.\n"
+                    "𝖳𝗈 𝖦𝖾𝗍 𝖬𝗈𝗋𝖾 𝖥𝗂𝗅𝖾𝗌, 𝖯𝗅𝖾𝖺𝗌𝖾 𝖯𝗎𝗋𝖼𝗁𝖺𝗌𝖾 𝖺 𝖲𝗎𝖻𝗌𝖼𝗋𝗂𝗉𝗍𝗂𝗈𝗇.",
+                    reply_markup=buy_button
+                )
+        else:
+            # No session: prompt to login
+            login_button = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔐 Login to get Temporary Premium", callback_data="login_prompt")]
+            ])
+            hours = TEMP_PREMIUM_DURATION // 3600
+            return await m.reply(
+                f"𝖸𝗈𝗎'𝗏𝖾 𝖱𝖾𝖺𝖼𝗁𝖾𝖽 𝖸𝗈𝗎𝗋 𝖣𝖺𝗂𝗅𝗒 𝖫𝗂𝗆𝗂𝗍 𝖮𝖿 {DAILY_LIMIT} 𝖥𝗂𝗅𝖾𝗌.\n\n"
+                f"🔐 **Login with your Telegram account to get {hours} hour{'s' if hours != 1 else ''} of temporary premium access!**",
+                reply_markup=login_button
+            )
 
     # ------------------------------------------------
     # GET VIDEO
@@ -85,7 +118,6 @@ async def handle_video_request(client, m: Message):
     # SEND VIDEO
     # ------------------------------------------------
     try:
-        # Fixed: Using client.send_video instead of m.reply_video
         sent = await client.send_video(
             chat_id=m.chat.id,
             video=video_id,
@@ -109,4 +141,3 @@ async def handle_video_request(client, m: Message):
 
     except Exception as e:
         await m.reply(f"❌ Failed to send video: {str(e)}")
-        
