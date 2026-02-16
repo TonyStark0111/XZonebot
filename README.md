@@ -1,4 +1,4 @@
-# 🤖 Pron Wali Zone Adult Zone (@PronWaliZoneBot)
+# 🤖 Pron Wali Zone Adult Zone
 
 A simple yet powerful Pron Wali Zone Adult Zone Telegram bot to manage premium video subscriptions, daily limits, and auto-delete functionalities. Built with Pyrogram and MongoDB.
 
