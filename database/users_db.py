@@ -32,7 +32,6 @@ class Database:
         self.refer_collection = mydb.referrals
         self.braz_history = mydb.braz_history        
         self.blocked_users = mydb.blocked_users
-        self.sessions = mydb.sessions                     # ← NEW
 
     # ---------- USERS ----------
     async def add_user(self, id, name):
@@ -42,8 +41,7 @@ class Database:
                 "name": name,
                 "video_count": 0,
                 "last_date": None,
-                "expiry_time": None,
-                "temp_premium_granted": False            # ← NEW
+                "expiry_time": None
             })
 
     async def is_user_exist(self, id):
@@ -64,35 +62,6 @@ class Database:
     async def get_all_users(self):
         return self.users.find({})
         
-    # ---------- TEMP PREMIUM FLAG ----------
-    async def has_temp_premium_granted(self, user_id):
-        user = await self.get_user(user_id)
-        return user.get("temp_premium_granted", False) if user else False
-
-    async def set_temp_premium_granted(self, user_id):
-        await self.users.update_one(
-            {"id": user_id},
-            {"$set": {"temp_premium_granted": True}}
-        )
-
-    # ---------- SESSION MANAGEMENT ----------
-    async def set_session(self, user_id: int, session_string: str):
-        """Store session string for a user."""
-        await self.sessions.update_one(
-            {"user_id": user_id},
-            {"$set": {"session": session_string, "created_at": datetime.now(timezone.utc)}},
-            upsert=True
-        )
-
-    async def get_session(self, user_id: int):
-        """Retrieve session string for a user (None if not found)."""
-        doc = await self.sessions.find_one({"user_id": user_id})
-        return doc.get("session") if doc else None
-
-    async def delete_session(self, user_id: int):
-        """Remove session for a user."""
-        await self.sessions.delete_one({"user_id": user_id})
-
     # ---------- COUNTS ----------
     async def total_files_count(self):
         return await self.videos.count_documents({})
