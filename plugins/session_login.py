@@ -26,7 +26,7 @@ STEP_PASSWORD = "password"
 # ================ COMMANDS ================
 
 @Client.on_message(filters.private & filters.command("login"))
-async def login_command(client: Client, message: Message):
+async def login_start(client: Client, message: Message):
     user_id = message.from_user.id
 
     # Already logged in?
