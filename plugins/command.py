@@ -10,7 +10,6 @@ from utils import temp, is_user_joined
 from plugins.verification import verify_user_on_start
 from plugins.send_file import send_requested_file
 from plugins.refer import refer_on_start
-from plugins.session_login import login_start          # ← IMPORT ADDED
 
 # =================================================
 # 🚀 START COMMAND
@@ -142,9 +141,3 @@ async def cb_handler(client: Client, query: CallbackQuery):
             reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode=enums.ParseMode.HTML
         )
-
-    # 🔐 New callback for login prompt from getvideo
-    elif data == "login_prompt":
-        await query.message.delete()
-        # Trigger the /login command
-        await login_start(client, query.message)
