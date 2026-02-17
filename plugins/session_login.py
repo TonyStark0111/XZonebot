@@ -112,23 +112,24 @@ async def cancel_login(client: Client, message: Message):
             reply_markup=remove_keyboard
         )
     else:
-        # Not in login state, ignore
-        pass
+        await message.reply("No active login process to cancel.")
 
-# Custom filter for users in login state
-async def login_state_filter(_, __, message):
-    return message.from_user.id in LOGIN_STATE
-
-@Client.on_message(filters.private & filters.text & filters.create(login_state_filter) & ~filters.command(["cancel", "cancellogin"]))
-async def login_handler(bot: Client, message: Message):
+# Single handler for all text messages during login
+@Client.on_message(filters.private & filters.text & ~filters.command(["start", "login", "logout", "cancel", "cancellogin"]))
+async def login_text_handler(client: Client, message: Message):
     user_id = message.from_user.id
     text = message.text
+
+    # Check if user is in login state
+    if user_id not in LOGIN_STATE:
+        return
+
     state = LOGIN_STATE[user_id]
     step = state["step"]
     progress = PROGRESS_STEPS.get(step, "")
 
-    # Cancel button handling
-    if text.strip().lower() == "❌ cancel":
+    # Cancel via button text
+    if text.strip() == "❌ Cancel":
         if "data" in state and "client" in state["data"]:
             try:
                 await state["data"]["client"].disconnect()
